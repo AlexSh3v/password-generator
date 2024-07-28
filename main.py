@@ -33,23 +33,24 @@ class PasswordGenerator:
 
     def __init__(self):
         self.root = ttk.Window(themename='cosmo')  # darkly
-        self.root.geometry("512x384")
+        self.root.geometry('640x360')  # 16x9: 640x360    4x3: 512x384
         self.root.resizable(False, False)
-        self.root.title("Password Generator")
+        self.root.title('Password Generator')
 
         self.size_var = ttk.IntVar(value=15)
         self.count_var = ttk.IntVar(value=0)
-        self.password_var = ttk.StringVar(value='')
+        self.password_var = ttk.StringVar(value='p@ssword-g3n')
         self.password_var.trace_add('write', self.on_password_change)
         self.info_var = ttk.StringVar(value='No Password ...')
         self.password_strength_var = ttk.StringVar(value='')
         self.night_mode_var = ttk.BooleanVar(value=False)
+        self.brute_force_number_var = ttk.StringVar(value='0')
 
         self.style = ttk.Style()
-        self.root.bind("<Control-equal>", self.increase_font_size)
-        self.root.bind("<Control-minus>", self.decrease_font_size)
-        self.root.bind("<Control-z>", self.go_back_in_history)
-        self.root.bind("<Control-Z>", self.go_forward_in_history)
+        self.root.bind('<Control-equal>', self.increase_font_size)
+        self.root.bind('<Control-minus>', self.decrease_font_size)
+        self.root.bind('<Control-z>', self.go_back_in_history)
+        self.root.bind('<Control-Z>', self.go_forward_in_history)
 
         frame = ttk.Frame(self.root, padding='10')
 
@@ -77,9 +78,28 @@ class PasswordGenerator:
 
         self.night_theme_button = ttk.Checkbutton(frame, text='Night Mode', onvalue=True, offvalue=False,
                                                   style='Roundtoggle.Toolbutton', variable=self.night_mode_var)
+        self.brute_force_label = ttk.Label(frame, anchor='e', textvariable=self.brute_force_number_var)
 
         frame.place(relwidth=1, relheight=1)
 
+        self.place_16_9()
+
+        self.password_length = 8
+        self.remembered_password = ''
+        self.magic_using = False
+        self.history_skip = False
+        self.history = []
+        self.history_index = -1
+        self.generate_button.config(command=self.generate_password)
+        self.copy_button.config(command=self.copy_password)
+        self.password_length_spinbox.config(command=self.update_password_length)
+        self.magic_word_check.config(command=self.on_around_word_change)
+        self.magic_restore_button.config(command=self.on_magic_restore_pressed)
+        self.night_theme_button.config(command=self.change_theme)
+        self.change_password_strength_text()
+        self.update_font_size()
+
+    def place_4_3(self):
         self.password_label.place(relwidth=.7, y=0)
         self.password_strength_label.place(relwidth=.3, y=0, relx=1, anchor='ne')
         #########################################################################
@@ -96,20 +116,24 @@ class PasswordGenerator:
         #########################################################################
         self.night_theme_button.place(relheight=.1, rely=1, relx=1, anchor='se')
 
-        self.password_length = 8
-        self.remembered_password = ''
-        self.magic_using = False
-        self.history_skip = False
-        self.history = []
-        self.history_index = -1
-        self.generate_button.config(command=self.generate_password)
-        self.copy_button.config(command=self.copy_password)
-        self.password_length_spinbox.config(command=self.update_password_length)
-        self.magic_word_check.config(command=self.on_around_word_change)
-        self.magic_restore_button.config(command=self.on_magic_restore_pressed)
-        self.night_theme_button.config(command=self.change_theme)
-        self.change_password_strength_text()
-        self.update_font_size()
+    def place_16_9(self):
+        #########################################################################
+        self.password_label.place(relwidth=.7, y=0)
+        self.password_entry.place(relwidth=0.75, y=30)
+        #########################################################################
+        self.password_strength_label.place(relwidth=.3, y=0, relx=1, anchor='ne')
+        self.brute_force_label.place(relwidth=.2, y=30, relx=1, anchor='ne')
+        self.count_label.place(relwidth=0.10, y=60, relx=1, anchor='ne')
+        #########################################################################
+        self.generate_button.place(relwidth=.50, y=75)
+        self.copy_button.place(relwidth=.25, y=75, relx=.50)
+        #########################################################################
+        self.password_length_spinbox.place(width=75, y=135, relx=.75, anchor='ne')
+        self.punctuation_check.place(relwidth=.5, y=135)
+        self.magic_word_check.place(relwidth=.6, y=170)
+        self.magic_restore_button.place(relwidth=.2, y=170, x=140)
+        #########################################################################
+        self.night_theme_button.place(relheight=.1, rely=1, relx=1, anchor='se')
 
     def change_theme(self):
         new_value = self.night_mode_var.get()
@@ -179,6 +203,7 @@ class PasswordGenerator:
     def on_password_change(self, *_):
         password = self.password_var.get()
         self.change_password_strength_text()
+        self.estimate_total_combinations()
         length = len(password)
         index = self.password_entry.index('insert') - 1
         if length > 32:
@@ -205,11 +230,34 @@ class PasswordGenerator:
         self.count_var.set(self.count_var.get() + 1)
         self.info_var.set(f'Password({length}) edited.')
 
+    def estimate_total_combinations(self):
+        password = self.password_var.get()
+        password_length = len(password)
+        characters = ''.join(set(password))
+        total_combinations = len(characters) ** password_length
+        self.brute_force_label.config(bootstyle='default')
+        if total_combinations < 1000:
+            s = f'{total_combinations}'
+        elif total_combinations < 1_000_000:
+            s = f'{total_combinations / 1000:.2f}k'
+        elif total_combinations < 1_000_000_000:
+            s = f'{total_combinations / 1_000_000:.2f} mil'
+        elif total_combinations < 1_000_000_000_000:
+            s = f'{total_combinations / 1_000_000_000:.2f} bil'
+        elif total_combinations < 1_000_000_000_000_000:
+            s = f'{total_combinations / 1_000_000_000_000:.2f} tril'
+        elif total_combinations < 1_000_000_000_000_000:
+            s = f'{total_combinations / 1_000_000_000_000_000:.2f} quad'
+        else:
+            s = 'IMPOSSIBLE'
+            self.brute_force_label.config(bootstyle='success')
+        self.brute_force_number_var.set(s)
+
     def update_password_length(self):
         self.info_var.set(f'New Password Length: {self.password_length_spinbox.get()}')
 
     def generate_password(self):
-        def get_random_character(exclude=''):
+        def get_random_character(*, exclude=''):
             s = string.ascii_letters + string.digits + punctuations
             for it in exclude:
                 s = s.replace(it, '')
